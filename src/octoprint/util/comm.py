@@ -15,6 +15,8 @@ import logging
 import serial
 import octoprint.plugin
 
+import requests
+
 from collections import deque
 
 from octoprint.util.avr_isp import stk500v2
@@ -116,7 +118,7 @@ class MachineCom(object):
 	STATE_ERROR = 9
 	STATE_CLOSED_WITH_ERROR = 10
 	STATE_TRANSFERING_FILE = 11
-	
+
 	def __init__(self, port = None, baudrate = None, callbackObject = None):
 		self._logger = logging.getLogger(__name__)
 		self._serialLogger = logging.getLogger("SERIAL")
@@ -205,6 +207,13 @@ class MachineCom(object):
 		self.thread.daemon = True
 		self.thread.start()
 
+                # raspibrew thread
+		self.temperature_request = queue.Queue()
+		self.temperature_response = queue.Queue()
+		self.thread = threading.Thread(target=self._raspibrew)
+		self.thread.daemon = True
+		self.thread.start()
+
 	def __del__(self):
 		self.close()
 
@@ -237,7 +246,7 @@ class MachineCom(object):
 
 	def getState(self):
 		return self._state
-	
+
 	def getStateString(self):
 		if self._state == self.STATE_NONE:
 			return "Offline"
@@ -269,19 +278,19 @@ class MachineCom(object):
 		if self._state == self.STATE_TRANSFERING_FILE:
 			return "Transfering file to SD"
 		return "?%d?" % (self._state)
-	
+
 	def getErrorString(self):
 		return self._errorValue
-	
+
 	def isClosedOrError(self):
 		return self._state == self.STATE_ERROR or self._state == self.STATE_CLOSED_WITH_ERROR or self._state == self.STATE_CLOSED
 
 	def isError(self):
 		return self._state == self.STATE_ERROR or self._state == self.STATE_CLOSED_WITH_ERROR
-	
+
 	def isOperational(self):
 		return self._state == self.STATE_OPERATIONAL or self._state == self.STATE_PRINTING or self._state == self.STATE_PAUSED or self._state == self.STATE_TRANSFERING_FILE
-	
+
 	def isPrinting(self):
 		return self._state == self.STATE_PRINTING
 
@@ -331,7 +340,7 @@ class MachineCom(object):
 
 	def getTemp(self):
 		return self._temp
-	
+
 	def getBedTemp(self):
 		return self._bedTemp
 
@@ -635,6 +644,11 @@ class MachineCom(object):
 			else:
 				self._bedTemp = (actual, None)
 
+        def _raspibrew(self):
+            req = self.temperature_request.get(block=True)
+            print "raspibrew thread receive request %s" % req
+
+
 	def _monitor(self):
 		feedbackControls = settings().getFeedbackControls()
 		pauseTriggers = settings().getPauseTriggers()
@@ -725,8 +739,9 @@ class MachineCom(object):
 
 				##~~ Temperature processing
 				if ' T:' in line or line.startswith('T:') or ' T0:' in line or line.startswith('T0:'):
-					self._processTemperatures(line)
-					self._callback.mcTempUpdate(self._temp, self._bedTemp)
+				        print "receive temperature but ignore these"
+					#self._processTemperatures(line)
+					#self._callback.mcTempUpdate(self._temp, self._bedTemp)
 
 					#If we are waiting for an M109 or M190 then measure the time we lost during heatup, so we can remove that time from our printing time estimate.
 					if 'ok' in line and self._heatupWaitStartTime:
@@ -1241,6 +1256,18 @@ class MachineCom(object):
 			except ValueError:
 				pass
 		return cmd
+
+	def _gcode_M105(self, cmd):
+	    # Replace M105 by send request to raspibrew
+            url = "http://127.0.0.1:9000/getstatus/1"
+            resp = requests.get(url)
+
+            if resp.status_code == 200:
+                temp = resp.json()["temp"]
+                self._temp[0] = (temp, None)
+		self._callback.mcTempUpdate(self._temp, None)
+
+            return cmd 
 
 	def _gcode_M140(self, cmd):
 		match = self._regex_paramSInt.search(cmd)
