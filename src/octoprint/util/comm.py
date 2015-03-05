@@ -739,8 +739,9 @@ class MachineCom(object):
 
 				##~~ Temperature processing
 				if ' T:' in line or line.startswith('T:') or ' T0:' in line or line.startswith('T0:'):
-					self._processTemperatures(line)
-					self._callback.mcTempUpdate(self._temp, self._bedTemp)
+				        print "receive temperature but ignore these"
+					#self._processTemperatures(line)
+					#self._callback.mcTempUpdate(self._temp, self._bedTemp)
 
 					#If we are waiting for an M109 or M190 then measure the time we lost during heatup, so we can remove that time from our printing time estimate.
 					if 'ok' in line and self._heatupWaitStartTime:
@@ -1261,12 +1262,12 @@ class MachineCom(object):
             url = "http://127.0.0.1:9000/getstatus/1"
             resp = requests.get(url)
 
-            if resp.status == 200:
+            if resp.status_code == 200:
                 temp = resp.json()["temp"]
                 self._temp[0] = (temp, None)
-                self._callback.mcTempUpdate(self._temp, None)
+		self._callback.mcTempUpdate(self._temp, None)
 
-            return None
+            return cmd
 
 	def _gcode_M140(self, cmd):
 		match = self._regex_paramSInt.search(cmd)
