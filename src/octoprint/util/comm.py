@@ -1095,6 +1095,8 @@ class MachineCom(object):
                     self.M109_target = None
                     line = "ok " + line
 
+                time.sleep(1)
+
             elif not self.coffee_queue.empty():
                 line = self.coffee_queue.get(0)
 
@@ -1300,6 +1302,7 @@ class MachineCom(object):
             if temp is not None:
                 self.coffee_queue.put("ok T:{}".format(temp))
 
+	    self._log("Send (coffee): %s" % cmd)
             return None
 
 	def _gcode_M140(self, cmd):
@@ -1339,6 +1342,7 @@ class MachineCom(object):
 
 		self._heatupWaitStartTime = time.time()
 
+	        self._log("Send (coffee): %s" % cmd)
 		return None
 		#return self._gcode_M104(cmd)
 
