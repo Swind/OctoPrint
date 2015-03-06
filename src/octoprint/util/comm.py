@@ -464,6 +464,7 @@ class MachineCom(object):
 		self._callback.mcFileSelected(None, None, False)
 
 	def cancelPrint(self):
+	        self._gcode_M109("M109 S0")
 		if not self.isOperational() or self.isStreaming():
 			return
 
