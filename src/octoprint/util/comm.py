@@ -206,10 +206,15 @@ class MachineCom(object):
 		self.coffee_queue = queue.Queue()
 		self.start_M109 = False
 		self.M109_target = None
+		self.current_temperature = 0
 
 		self.thread = threading.Thread(target=self._monitor)
 		self.thread.daemon = True
 		self.thread.start()
+
+		self.temp_thread = threading.Thread(target=self._monitor_temperature)
+		self.temp_thread.daemon = True
+		self.temp_thread.start()
 
 	def __del__(self):
 		self.close()
@@ -644,9 +649,19 @@ class MachineCom(object):
 			else:
 				self._bedTemp = (actual, None)
 
-        def _raspibrew(self):
-            req = self.temperature_request.get(block=True)
-            print "raspibrew thread receive request %s" % req
+        def _monitor_temperature(self):
+            url = "http://127.0.0.1:9000/getstatus/1"
+
+            while(True):
+                try:
+                    resp = requests.get(url)
+                    if resp.status_code == 200:
+                        self.current_temperature = float(resp.json()["temp"])
+                except Exception as e:
+                    print "Get temperature from {} failed".format(url)
+                    print e.message
+
+                time.sleep(1)
 
 
 	def _monitor(self):
@@ -1075,8 +1090,7 @@ class MachineCom(object):
                 return self.coffee_queue.get(0)
 
             elif self.M109_target is not None:
-                temp = self._request_temperature()
-                line = "T:{} / {}".format(temp, self.M109_target)
+                line = "T:{} / {}".format(self.current_temperature, self.M109_target)
 
                 if self.M109_target is not None:
                     if temp >= self.M109_target - 0.5:
@@ -1284,18 +1298,9 @@ class MachineCom(object):
 				pass
 		return cmd
 
-	def _request_temperature(self):
-            url = "http://127.0.0.1:9000/getstatus/1"
-            resp = requests.get(url)
-
-            if resp.status_code == 200:
-                return float(resp.json()["temp"])
-            else:
-                return None
-
 	def _gcode_M105(self, cmd):
 	    # Replace M105 by send request to raspibrew
-            temp = self._request_temperature()
+            temp = self.current_temperature
 
             if temp is not None:
                 self.coffee_queue.put("ok T:{}".format(temp))
