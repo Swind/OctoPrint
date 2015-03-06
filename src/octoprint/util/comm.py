@@ -1084,31 +1084,26 @@ class MachineCom(object):
 				eventManager().fire(Events.ERROR, {"error": self.getErrorString()})
 		return line
 
-        count = 0
         def _readline_for_coffee(self):
-            if not self.coffee_queue.empty():
-                return self.coffee_queue.get(0)
+            line = None
 
-            elif self.M109_target is not None:
+            if self.M109_target is not None:
                 line = "T:{} / {}".format(self.current_temperature, self.M109_target)
 
-                if self.M109_target is not None:
-                    if temp >= self.M109_target - 0.5:
-                        print "The temperature is {} {}, start print !!!".format(temp, self.count)
-                        self.count = self.count + 1
+                if self.current_temperature >= self.M109_target - 0.5:
+                    print "The temperature is {}, start print !!!".format(self.current_temperature)
+                    self.M109_target = None
+                    line = "ok " + line
 
-                        if self.count > 5:
-                            self.M109_target = None
-                            line = "ok " + line
-                            self.count = 0
+            elif not self.coffee_queue.empty():
+                line = self.coffee_queue.get(0)
 
-                return line
-
-            return None
+            return line
 
 	def _readline(self):
-	        coffee_line = self._readline_for_coffee()
+                coffee_line = self._readline_for_coffee()
                 if coffee_line is not None:
+                    print "Return result from coffee: {}".format(coffee_line)
                     return coffee_line
 
 		if self._serial == None:
