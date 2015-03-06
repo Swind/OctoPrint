@@ -156,8 +156,8 @@ class MachineCom(object):
 		self._timeout = None
 
 		self._alwaysSendChecksum = settings().getBoolean(["feature", "alwaysSendChecksum"])
-		self._currentLine = 1
-		self._resendDelta = None
+                self._currentLine = 1
+                self._resendDelta = None
 		self._lastLines = deque([], 50)
 
 		# hooks
@@ -464,7 +464,9 @@ class MachineCom(object):
 		self._callback.mcFileSelected(None, None, False)
 
 	def cancelPrint(self):
-	        self._gcode_M109("M109 S0")
+                # Reset M109 status
+                self._gcode_M109("M109 S0")
+
 		if not self.isOperational() or self.isStreaming():
 			return
 
@@ -970,7 +972,7 @@ class MachineCom(object):
 							sdStatusRequestTimeout = getNewTimeout("sdStatus")
 					else:
 						# Even when printing request the temperature every 5 seconds.
-						if time.time() > tempRequestTimeout and not self.isStreaming():
+						if time.time() > tempRequestTimeout and not self.isStreaming() and self.M109_target is None:
 							self._commandQueue.put("M105")
 							tempRequestTimeout = getNewTimeout("temperature")
 
