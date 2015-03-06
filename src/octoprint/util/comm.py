@@ -1103,23 +1103,21 @@ class MachineCom(object):
             return line
 
 	def _readline(self):
-                coffee_line = self._readline_for_coffee()
-                if coffee_line is not None:
-                    print "Return result from coffee: {}".format(coffee_line)
-                    return coffee_line
+                ret = self._readline_for_coffee()
+                if ret is None:
+                    if self._serial == None:
+                            return None
+                    try:
+                            ret = self._serial.readline()
+                    except:
+                            self._log("Unexpected error while reading serial port: %s" % (getExceptionString()))
+                            self._errorValue = getExceptionString()
+                            self.close(True)
+                            return None
+                    if ret == '':
+                            #self._log("Recv: TIMEOUT")
+                            return ''
 
-		if self._serial == None:
-			return None
-		try:
-			ret = self._serial.readline()
-		except:
-			self._log("Unexpected error while reading serial port: %s" % (getExceptionString()))
-			self._errorValue = getExceptionString()
-			self.close(True)
-			return None
-		if ret == '':
-			#self._log("Recv: TIMEOUT")
-			return ''
 		self._log("Recv: %s" % sanitizeAscii(ret))
 		return ret
 
