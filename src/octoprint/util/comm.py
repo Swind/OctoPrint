@@ -203,14 +203,11 @@ class MachineCom(object):
 		self._sendingLock = threading.Lock()
 
 		# monitoring thread
-		self.thread = threading.Thread(target=self._monitor)
-		self.thread.daemon = True
-		self.thread.start()
+		self.coffee_queue = queue.Queue()
+		self.start_M109 = False
+		self.M109_target = None
 
-                # raspibrew thread
-		self.temperature_request = queue.Queue()
-		self.temperature_response = queue.Queue()
-		self.thread = threading.Thread(target=self._raspibrew)
+		self.thread = threading.Thread(target=self._monitor)
 		self.thread.daemon = True
 		self.thread.start()
 
@@ -739,9 +736,8 @@ class MachineCom(object):
 
 				##~~ Temperature processing
 				if ' T:' in line or line.startswith('T:') or ' T0:' in line or line.startswith('T0:'):
-				        print "receive temperature but ignore these"
-					#self._processTemperatures(line)
-					#self._callback.mcTempUpdate(self._temp, self._bedTemp)
+					self._processTemperatures(line)
+					self._callback.mcTempUpdate(self._temp, self._bedTemp)
 
 					#If we are waiting for an M109 or M190 then measure the time we lost during heatup, so we can remove that time from our printing time estimate.
 					if 'ok' in line and self._heatupWaitStartTime:
@@ -1043,6 +1039,7 @@ class MachineCom(object):
 				self._changeState(self.STATE_ERROR)
 				eventManager().fire(Events.ERROR, {"error": self.getErrorString()})
 				return False
+
 		return True
 
 	def _handleErrors(self, line):
@@ -1069,7 +1066,34 @@ class MachineCom(object):
 				eventManager().fire(Events.ERROR, {"error": self.getErrorString()})
 		return line
 
+        count = 0
+        def _readline_for_coffee(self):
+            if not self.coffee_queue.empty():
+                return self.coffee_queue.get(0)
+
+            elif self.M109_target is not None:
+                temp = self._request_temperature()
+                line = "T:{} / {}".format(temp, self.M109_target)
+
+                if self.M109_target is not None:
+                    if temp >= self.M109_target - 0.5:
+                        print "The temperature is {} {}, start print !!!".format(temp, self.count)
+                        self.count = self.count + 1
+
+                        if self.count > 5:
+                            self.M109_target = None
+                            line = "ok " + line
+                            self.count = 0
+
+                return line
+
+            return None
+
 	def _readline(self):
+	        coffee_line = self._readline_for_coffee()
+                if coffee_line is not None:
+                    return coffee_line
+
 		if self._serial == None:
 			return None
 		try:
@@ -1257,17 +1281,23 @@ class MachineCom(object):
 				pass
 		return cmd
 
-	def _gcode_M105(self, cmd):
-	    # Replace M105 by send request to raspibrew
+	def _request_temperature(self):
             url = "http://127.0.0.1:9000/getstatus/1"
             resp = requests.get(url)
 
             if resp.status_code == 200:
-                temp = resp.json()["temp"]
-                self._temp[0] = (temp, None)
-		self._callback.mcTempUpdate(self._temp, None)
+                return float(resp.json()["temp"])
+            else:
+                return None
 
-            return cmd
+	def _gcode_M105(self, cmd):
+	    # Replace M105 by send request to raspibrew
+            temp = self._request_temperature()
+
+            if temp is not None:
+                self.coffee_queue.put("ok T:{}".format(temp))
+
+            return None
 
 	def _gcode_M140(self, cmd):
 		match = self._regex_paramSInt.search(cmd)
@@ -1284,8 +1314,30 @@ class MachineCom(object):
 		return cmd
 
 	def _gcode_M109(self, cmd):
+                cmds = cmd.split(" ")
+                self.M109_target = float(cmds[1][1:])
+
+                if self.M109_target == 0.0:
+                    mode = "off"
+                else:
+                    mode = "auto"
+
+                url = "http://192.168.1.210:9000/postparams/1"
+                payload = {
+                    "mode":mode,
+                    "setpoint":self.M109_target,
+                    "dutycycle":0.0,
+                    "cycletime":5.0,
+                    "k":44,
+                    "i":165,
+                    "d":4
+                }
+                requests.post(url, data=payload)
+
 		self._heatupWaitStartTime = time.time()
-		return self._gcode_M104(cmd)
+
+		return None
+		#return self._gcode_M104(cmd)
 
 	def _gcode_M190(self, cmd):
 		self._heatupWaitStartTime = time.time()

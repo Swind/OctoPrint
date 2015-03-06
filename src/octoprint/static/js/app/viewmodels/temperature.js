@@ -83,7 +83,7 @@ $(function() {
         self.plotOptions = {
             yaxis: {
                 min: 0,
-                max: 310,
+                max: 100,
                 ticks: 10
             },
             xaxis: {
